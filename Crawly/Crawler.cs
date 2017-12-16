@@ -18,7 +18,7 @@ namespace Crawly
             Console.WriteLine("Enabling log4net");
             var appender = new ConsoleAppender();
             appender.Layout = new SimpleLayout();
-            log4net.Config.BasicConfigurator.Configure(appender);
+            //log4net.Config.BasicConfigurator.Configure(appender);
         }
 
         internal int TotalWorkers = 0;
@@ -27,19 +27,24 @@ namespace Crawly
         private static readonly ILog _log = LogManager.GetLogger(typeof(CrawlerWorker));
 
         private CrawlerSettings _settings;
-        private ConcurrentDictionary<String, SiteConfig> _robots = new ConcurrentDictionary<string, SiteConfig>();
+        private ConcurrentDictionary<String, Robots> _robots = new ConcurrentDictionary<string, Robots>();
         private ConcurrentBag<String> _visited = new ConcurrentBag<string>();
-        private ConcurrentStack<string> _stack = new ConcurrentStack<string>();
+        private ConcurrentQueue<Site> _sites = new ConcurrentQueue<Site>();
 
         public Crawler(CrawlerSettings settings)
         {
             _settings = settings;
-
             TotalWorkers = _settings.WorkerCount;
 
             foreach (String str in _settings.Seeds)
             {
-                _stack.Push(str);
+                Site s = new Site()
+                {
+                    Url = str,
+                    Depth = 0
+                };
+
+                _sites.Enqueue(s);
             }
         }
 
@@ -56,9 +61,12 @@ namespace Crawly
                 {
                     Parent = this,
                     Robots = _robots,
-                    Stack = _stack,
                     Visited = _visited,
-                    ID = i
+                    Sites = _sites,
+                    RespectRobots = _settings.RespectRobots,
+                    UserAgent = _settings.UserAgent,
+                    MaxDepth = _settings.MaxDepth,
+                    ID = i,
                 };
 
                 var functionArgs = Tuple.Create(args, new CrawlerWorker());
