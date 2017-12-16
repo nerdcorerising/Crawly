@@ -1,5 +1,6 @@
 ﻿using log4net;
 using log4net.Appender;
+using log4net.Core;
 using log4net.Layout;
 using System;
 using System.Collections.Concurrent;
@@ -14,11 +15,18 @@ namespace Crawly
     {
         static Crawler()
         {
-            //log4net.Config.XmlConfigurator.Configure();
-            Console.WriteLine("Enabling log4net");
-            var appender = new ConsoleAppender();
-            appender.Layout = new SimpleLayout();
-            //log4net.Config.BasicConfigurator.Configure(appender);
+            ConsoleAppender appender = new ConsoleAppender
+            {
+                Layout = new SimpleLayout(),
+#if DEBUG
+                Threshold = Level.Debug
+#else
+                Threshold = Level.Info
+#endif
+            };
+
+            Console.WriteLine($"Enabling log4net console logging with threshold={appender.Threshold}.");
+            log4net.Config.BasicConfigurator.Configure(appender);
         }
 
         internal int TotalWorkers = 0;
@@ -29,12 +37,13 @@ namespace Crawly
         private CrawlerSettings _settings;
         private ConcurrentDictionary<String, Robots> _robots = new ConcurrentDictionary<string, Robots>();
         private ConcurrentBag<String> _visited = new ConcurrentBag<string>();
-        private ConcurrentQueue<Site> _sites = new ConcurrentQueue<Site>();
+        private CrawlerQueue _sites = null;
 
         public Crawler(CrawlerSettings settings)
         {
             _settings = settings;
             TotalWorkers = _settings.WorkerCount;
+            _sites = new CrawlerQueue(_settings.RespectRobots, _settings.UserAgent);
 
             foreach (String str in _settings.Seeds)
             {

@@ -35,81 +35,19 @@ namespace Crawly
                 {
                     while (reader.Peek() != -1)
                     {
-                        bool userAgentMatch = ParseUserAgentFields(reader);
+                        bool userAgentMatch = ParseUserAgentFields(reader, url);
 
-                        ParseRulesForUserAgent(reader, userAgentMatch);
+                        ParseRulesForUserAgent(reader, userAgentMatch, url);
                     }
                 }
             }
             catch (Exception e)
             {
-                _log.Warn($"Error getting {url}. Exception message: {e.Message}.");
+                _log.Info($"Error getting {url}. Exception message: {e.Message}.");
             }
         }
 
-        private void ParseRulesForUserAgent(StreamReader reader, bool userAgentMatch)
-        {
-            string line = null;
-            string userAgentString = "user-agent:";
-            while ((line = reader.ReadLine()) != null)
-            {
-                line = RemoveComment(line);
-                line = line.Trim();
-
-                if (String.IsNullOrEmpty(line) || line.StartsWith("#"))
-                {
-                    continue;
-                }
-
-                if (line.StartsWith(userAgentString))
-                {
-                    break;
-                }
-
-                string disallow = "Disallow:";
-                string crawlDelay = "Crawl-Delay:";
-
-                // Only reads Disallow and Crawl-Delay for now
-                if (line.StartsWith(disallow, StringComparison.InvariantCultureIgnoreCase))
-                {
-                    line = line.Remove(0, disallow.Length).Trim();
-                    _denyRules.Add(line);
-                }
-                else if (line.StartsWith(crawlDelay, StringComparison.InvariantCultureIgnoreCase))
-                {
-                    long waitSeconds;
-                    line = line.Remove(0, crawlDelay.Length).Trim();
-                    if (!Int64.TryParse(line, out waitSeconds))
-                    {
-                        _log.Warn($"Saw Crawl-Delay for site {_domain} but it had an unparseable value of {line}.");
-                    }
-                    else
-                    {
-                        if (waitSeconds < 1 || waitSeconds > 30)
-                        {
-                            _log.Warn($"Crawl-Delay set to invalid value of {waitSeconds}, defaulting to 1 second.");
-                            waitSeconds = 1;
-                        }
-
-                        _waitTime = TimeSpan.TicksPerSecond * waitSeconds;
-                    }
-                }
-            }
-        }
-
-        private string RemoveComment(string line)
-        {
-            int pos = line.IndexOf("#");
-
-            if (pos > 0 && pos < line.Length)
-            {
-                return line.Remove(pos);
-            }
-
-            return line;
-        }
-
-        private bool ParseUserAgentFields(StreamReader reader)
+        private bool ParseUserAgentFields(StreamReader reader, string url)
         {
             bool matches = false;
             string userAgentString = "user-agent:";
@@ -154,6 +92,69 @@ namespace Crawly
             return matches;
         }
 
+        private void ParseRulesForUserAgent(StreamReader reader, bool userAgentMatch, string url)
+        {
+            string line = null;
+            string userAgentString = "user-agent:";
+            while ((line = reader.ReadLine()) != null)
+            {
+                line = RemoveComment(line);
+                line = line.Trim();
+
+                if (line.StartsWith(userAgentString))
+                {
+                    break;
+                }
+
+                if (!userAgentMatch || String.IsNullOrEmpty(line) || line.StartsWith("#"))
+                {
+                    continue;
+                }
+
+
+                string disallow = "Disallow:";
+                string crawlDelay = "Crawl-Delay:";
+
+                // Only reads Disallow and Crawl-Delay for now
+                if (line.StartsWith(disallow, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    line = line.Remove(0, disallow.Length).Trim();
+                    _denyRules.Add(line);
+                }
+                else if (line.StartsWith(crawlDelay, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    long waitSeconds;
+                    line = line.Remove(0, crawlDelay.Length).Trim();
+                    if (!Int64.TryParse(line, out waitSeconds))
+                    {
+                        _log.Info($"{url}: Saw Crawl-Delay for site {_domain} but it had an unparseable value of {line}.");
+                    }
+                    else
+                    {
+                        if (waitSeconds < 1 || waitSeconds > 30)
+                        {
+                            _log.Info($"{url}: Crawl-Delay set to invalid value of {waitSeconds}, defaulting to 1 second.");
+                            waitSeconds = 1;
+                        }
+
+                        _waitTime = TimeSpan.TicksPerSecond * waitSeconds;
+                    }
+                }
+            }
+        }
+
+        private string RemoveComment(string line)
+        {
+            int pos = line.IndexOf("#");
+
+            if (pos > 0 && pos < line.Length)
+            {
+                return line.Remove(pos);
+            }
+
+            return line;
+        }
+
         public bool Allowed(Uri uri)
         {
             if (!uri.Host.Equals(_domain, StringComparison.InvariantCultureIgnoreCase))
@@ -185,14 +186,14 @@ namespace Crawly
 
         public long RemainingDelay()
         {
-            // TODO: come up with implementation that can throttle
-            return 0;
-            //long diff = DateTime.Now.Ticks - (_lastAccessTime + _waitTime);
+            long diff = (_lastAccessTime + _waitTime) - DateTime.Now.Ticks;
+            long ret = Math.Max(diff, 0);
+            _log.Debug($"{_domain} Remaining time = {ret}");
 
-            //return Math.Max(diff, 0);
+            return ret;
         }
 
-        public void Visited(Uri uri)
+        public void Visited()
         {
             _lastAccessTime = DateTime.Now.Ticks;
         }

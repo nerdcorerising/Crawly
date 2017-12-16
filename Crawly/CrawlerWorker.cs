@@ -15,7 +15,7 @@ namespace Crawly
         public Crawler Parent                                   { get; set; }
         public ConcurrentDictionary<string, Robots> Robots      { get; set; }
         public ConcurrentBag<string> Visited                    { get; set; }
-        public ConcurrentQueue<Site> Sites                      { get; set; }
+        public CrawlerQueue Sites                               { get; set; }
         public bool RespectRobots                               { get; set; }
         public string UserAgent                                 { get; set; }
         public int MaxDepth                                     { get; set; }
@@ -29,7 +29,7 @@ namespace Crawly
         private Crawler _parent = null;
         private ConcurrentDictionary<String, Robots> _robots = null;
         private ConcurrentBag<String> _visited = null;
-        private ConcurrentQueue<Site> _sites = null;
+        private CrawlerQueue _sites = null;
         private bool _respectRobots = true;
         private string _userAgent = null;
         private int _maxDepth = -1;
@@ -50,10 +50,10 @@ namespace Crawly
             while (true)
             {
                 Site next = null;    
-                if(!_sites.TryDequeue(out next))
+                if(!_sites.GetNextAvailableWorker(out next))
                 {
                     Interlocked.Increment(ref _parent.PausedWorkers);
-                    if(_parent.PausedWorkers == _parent.TotalWorkers)
+                    if(_sites.Empty() && _parent.PausedWorkers == _parent.TotalWorkers)
                     {
                         Log("Queue is empty and all workers paused, terminating.");
                         return;
@@ -80,6 +80,7 @@ namespace Crawly
 
         private void VisitOneSite(Site next)
         {
+            _log.Info($"Visiting site {next.Url}.");
             Uri uri = new Uri(next.Url);
             string host = uri.Host;
 
@@ -114,7 +115,7 @@ namespace Crawly
                 foreach (HtmlNode link in doc.DocumentNode.Descendants("a"))
                 {
                     var content = link.GetAttributeValue("href", "");
-                    if (!String.IsNullOrEmpty(content))
+                    if (!String.IsNullOrEmpty(content) && !content.StartsWith("javascript", StringComparison.InvariantCultureIgnoreCase))
                     {
                         if (!content.StartsWith("http", StringComparison.InvariantCultureIgnoreCase))
                         {

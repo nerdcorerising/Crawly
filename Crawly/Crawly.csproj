@@ -50,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Crawler.cs" />
+    <Compile Include="CrawlerQueue.cs" />
     <Compile Include="CrawlerSettings.cs" />
     <Compile Include="CrawlerWorker.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
