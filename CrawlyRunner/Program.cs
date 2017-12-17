@@ -17,6 +17,7 @@ namespace CrawlyRunner
                 RespectRobots = true,
                 Seeds = new string[] { @"http://5by5.tv/hypercritical" },
                 MaxDepth = 8,
+                WorkerCount = 64,
                 BannedExtensions = new string[] {
                         // images
                         ".mng", ".pct", ".bmp", ".gif", ".jpg", ".jpeg", ".png", ".pst", ".psp", ".tif",

@@ -37,6 +37,7 @@ namespace Crawly
         private CrawlerSettings _settings;
         private ConcurrentDictionary<String, Robots> _robots = new ConcurrentDictionary<string, Robots>();
         private ConcurrentBag<String> _visited = new ConcurrentBag<string>();
+        private ConcurrentBag<String> _found = new ConcurrentBag<string>();
         private CrawlerQueue _sites = null;
 
         public Crawler(CrawlerSettings settings)
@@ -94,7 +95,11 @@ namespace Crawly
 
         public void UrlFound(string url)
         {
-            _log.Info($"!!! URL {url} !!!");
+            if (!_found.Contains(url))
+            {
+                _found.Add(url);
+                _log.Info($"!!! URL {url} !!!");
+            }
         }
 
         private void RunWorker(object obj)

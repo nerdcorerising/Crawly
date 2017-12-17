@@ -36,12 +36,14 @@ namespace Crawly
             SiteInfo info;
             if (!_infos.TryGetValue(domain, out info))
             {
-                lock(AddRobotsLock)
+                SiteInfo newInfo = CreateSiteInfo(domain);
+
+                lock (AddRobotsLock)
                 {
                     // Check to see if another thread had the lock and updated it
                     if (!_infos.TryGetValue(domain, out info))
                     {
-                        info = CreateSiteInfo(domain);
+                        info = newInfo;
                         if (!_infos.TryAdd(domain, info))
                         {
                             _log.Error($"Something added a SiteInfo while we had the lock, this shouldn't happen.");
