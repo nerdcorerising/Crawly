@@ -12,14 +12,15 @@ namespace Crawly
 {
     internal class CrawlerWorkerArgs
     {
-        public Crawler Parent                                   { get; set; }
-        public ConcurrentDictionary<string, Robots> Robots      { get; set; }
-        public ConcurrentBag<string> Visited                    { get; set; }
-        public CrawlerQueue Sites                               { get; set; }
-        public bool RespectRobots                               { get; set; }
-        public string UserAgent                                 { get; set; }
-        public int MaxDepth                                     { get; set; }
-        public int ID                                           { get; set; }
+        public Crawler Parent                                       { get; set; }
+        public ConcurrentDictionary<string, Robots> Robots          { get; set; }
+        public IEnumerable<string> BannedExtensions                 { get; set; }
+        public ConcurrentBag<string> Visited                        { get; set; }
+        public CrawlerQueue Sites                                   { get; set; }
+        public bool RespectRobots                                   { get; set; }
+        public string UserAgent                                     { get; set; }
+        public int MaxDepth                                         { get; set; }
+        public int ID                                               { get; set; }
     }
 
     internal class CrawlerWorker
@@ -28,6 +29,8 @@ namespace Crawly
 
         private Crawler _parent = null;
         private ConcurrentDictionary<String, Robots> _robots = null;
+        // TODO: use something like hashset if perf matters here
+        private IEnumerable<string> _bannedExts;
         private ConcurrentBag<String> _visited = null;
         private CrawlerQueue _sites = null;
         private bool _respectRobots = true;
@@ -39,13 +42,13 @@ namespace Crawly
         {
             _parent = args.Parent;
             _robots = args.Robots;
+            _bannedExts = args.BannedExtensions;
             _visited = args.Visited;
             _sites = args.Sites;
             _respectRobots = args.RespectRobots;
             _userAgent = args.UserAgent;
             _maxDepth = args.MaxDepth;
             _id = args.ID;
-
             
             while (true)
             {
@@ -80,7 +83,7 @@ namespace Crawly
 
         private void VisitOneSite(Site next)
         {
-            _log.Info($"Visiting site {next.Url}.");
+            _log.Debug($"Visiting site {next.Url}.");
             Uri uri = new Uri(next.Url);
             string host = uri.Host;
 
@@ -112,6 +115,11 @@ namespace Crawly
                 web.UserAgent = _userAgent;
                 var doc = web.Load(uri);
 
+                foreach (var rss in doc.DocumentNode.SelectNodes("//link[(@type='application/rss+xml' or @type='application/atom+xml') and @rel='alternate']"))
+                {
+                    _parent.UrlFound(rss.Attributes["href"].Value);
+                }
+
                 foreach (HtmlNode link in doc.DocumentNode.Descendants("a"))
                 {
                     var content = link.GetAttributeValue("href", "");
@@ -120,6 +128,15 @@ namespace Crawly
                         if (!content.StartsWith("http", StringComparison.InvariantCultureIgnoreCase))
                         {
                             content = "http://" + host + content;
+                        }
+
+                        foreach (string ext in _bannedExts)
+                        {
+                            if (content.EndsWith(ext, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                _log.Debug($"Skipping url {content} because it ends with banned extension {ext}.");
+                                continue;
+                            }
                         }
 
                         Log($"Found link {content}");

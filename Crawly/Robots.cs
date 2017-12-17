@@ -43,7 +43,7 @@ namespace Crawly
             }
             catch (Exception e)
             {
-                _log.Info($"Error getting {url}. Exception message: {e.Message}.");
+                _log.Debug($"Error getting {url}. Exception message: {e.Message}.");
             }
         }
 

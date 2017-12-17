@@ -75,6 +75,7 @@ namespace Crawly
                     RespectRobots = _settings.RespectRobots,
                     UserAgent = _settings.UserAgent,
                     MaxDepth = _settings.MaxDepth,
+                    BannedExtensions = _settings.BannedExtensions,
                     ID = i,
                 };
 
@@ -89,6 +90,11 @@ namespace Crawly
             {
                 t.Join();
             }
+        }
+
+        public void UrlFound(string url)
+        {
+            _log.Info($"!!! URL {url} !!!");
         }
 
         private void RunWorker(object obj)
