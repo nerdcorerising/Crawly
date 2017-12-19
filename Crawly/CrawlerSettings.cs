@@ -7,8 +7,11 @@ using HtmlAgilityPack;
 
 namespace Crawly
 {
+    public delegate void WorkerFunction(HtmlDocument doc, Uri docUri, out List<string> foundItems, out List<Uri> newUris);
+
     public class CrawlerSettings
     {
+        public WorkerFunction Function                  { get; set; } = null;
         public IEnumerable<String> Seeds                { get; set; } = new List<String>();
         public IEnumerable<String> BannedExtensions     { get; set; } = new List<String>();
         public String OutputPath                        { get; set; } = "output.txt";

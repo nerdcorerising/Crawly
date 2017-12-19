@@ -1,4 +1,5 @@
-﻿using HtmlAgilityPack;
+﻿using Crawly.HTML;
+using HtmlAgilityPack;
 using log4net;
 using System;
 using System.Collections.Concurrent;
@@ -13,6 +14,7 @@ namespace Crawly
     internal class CrawlerWorkerArgs
     {
         public Crawler Parent                                       { get; set; }
+        public WorkerFunction Function                              { get; set; }
         public ConcurrentDictionary<string, Robots> Robots          { get; set; }
         public IEnumerable<string> BannedExtensions                 { get; set; }
         public ConcurrentBag<string> Visited                        { get; set; }
@@ -28,6 +30,7 @@ namespace Crawly
         private static readonly ILog _log = LogManager.GetLogger(typeof(CrawlerWorker));
 
         private Crawler _parent = null;
+        private WorkerFunction _callback = null;
         private ConcurrentDictionary<String, Robots> _robots = null;
         // TODO: use something like hashset if perf matters here
         private IEnumerable<string> _bannedExts;
@@ -37,10 +40,17 @@ namespace Crawly
         private string _userAgent = null;
         private int _maxDepth = -1;
         private int _id = -1;
+        private HtmlWeb _web;
 
         public void Run(CrawlerWorkerArgs args)
         {
             _parent = args.Parent;
+            _callback = args.Function;
+            if (_callback == null)
+            {
+                throw new ArgumentException("No callback was provided so no work would be done.");
+            }
+
             _robots = args.Robots;
             _bannedExts = args.BannedExtensions;
             _visited = args.Visited;
@@ -49,7 +59,10 @@ namespace Crawly
             _userAgent = args.UserAgent;
             _maxDepth = args.MaxDepth;
             _id = args.ID;
-            
+
+            _web = new HtmlWeb();
+            _web.UserAgent = _userAgent;
+
             while (true)
             {
                 Site next = null;    
@@ -111,43 +124,25 @@ namespace Crawly
 
             try
             {
-                var web = new HtmlWeb();
-                web.UserAgent = _userAgent;
-                var doc = web.Load(uri);
+                HtmlDocument doc = _web.Load(uri);
+                List<string> found;
+                List<Uri> nextSites;
+                _callback(doc, uri, out found, out nextSites);
 
-                foreach (var rss in doc.DocumentNode.SelectNodes("//link[(@type='application/rss+xml' or @type='application/atom+xml') and @rel='alternate']"))
+                foreach (string f in found)
                 {
-                    _parent.UrlFound(rss.Attributes["href"].Value);
+                    _parent.UrlFound(f);
                 }
 
-                foreach (HtmlNode link in doc.DocumentNode.Descendants("a"))
+                foreach(Uri link in nextSites)
                 {
-                    var content = link.GetAttributeValue("href", "");
-                    if (!String.IsNullOrEmpty(content) && !content.StartsWith("javascript", StringComparison.InvariantCultureIgnoreCase))
+                    Site temp = new Site()
                     {
-                        if (!content.StartsWith("http", StringComparison.InvariantCultureIgnoreCase))
-                        {
-                            content = "http://" + host + content;
-                        }
+                        Url = link.AbsoluteUri,
+                        Depth = next.Depth + 1
+                    };
 
-                        foreach (string ext in _bannedExts)
-                        {
-                            if (content.EndsWith(ext, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                _log.Debug($"Skipping url {content} because it ends with banned extension {ext}.");
-                                continue;
-                            }
-                        }
-
-                        Log($"Found link {content}");
-                        Site temp = new Site()
-                        {
-                            Url = content,
-                            Depth = next.Depth + 1
-                        };
-
-                        _sites.Enqueue(temp);
-                    }
+                    _sites.Enqueue(temp);
                 }
             }
             catch (Exception e)

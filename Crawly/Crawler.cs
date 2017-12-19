@@ -70,6 +70,7 @@ namespace Crawly
                 CrawlerWorkerArgs args = new CrawlerWorkerArgs()
                 {
                     Parent = this,
+                    Function = _settings.Function,
                     Robots = _robots,
                     Visited = _visited,
                     Sites = _sites,
