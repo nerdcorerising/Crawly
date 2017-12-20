@@ -20,7 +20,7 @@ namespace CrawlyRunner
                 Function = MyFunction,
                 OutputPath = "Sample.txt",
                 RespectRobots = true,
-                Seeds = new string[] { @"http://5by5.tv/hypercritical" },
+                Seeds = new string[] { @"http://5by5.tv/", @"http://maximumfun.org/", @"https://www.relay.fm/" },
                 MaxDepth = 8,
                 WorkerCount = 64
             };
@@ -67,19 +67,31 @@ namespace CrawlyRunner
             foundItems = new List<string>();
             newUris = new List<Uri>();
 
-            HtmlNodeCollection rssNodes = doc.DocumentNode.SelectNodes("//link[(@type='application/rss+xml' or @type='application/atom+xml') and @rel='alternate']");
-            if (rssNodes != null)
+            IEnumerable<HtmlNode> nodes = doc.DocumentNode.Descendants();// SelectNodes("//link[(@type='application/rss+xml' or @type='application/atom+xml') and @rel='alternate']");
+            if (nodes != null)
             {
-                foreach (var rss in rssNodes)
+                foreach (var node in nodes)
                 {
-                    try
+                    if (node.HasAttributes)
                     {
-                        Uri rssUri = new Uri(docUri, rss.Attributes["href"].Value);
-                        foundItems.Add(rssUri.ToString());
-                    }
-                    catch
-                    {
+                        var href = node.Attributes["href"];
+                        var type = node.Attributes["type"];
+                        var rel = node.Attributes["rel"];
 
+                        if (href != null && type != null 
+                            && rel != null && IsRss(type, rel))
+                        {
+                            try
+                            {
+                                Uri rssUri = new Uri(docUri, href.Value);
+                                foundItems.Add(rssUri.ToString());
+                            }
+                            catch
+                            {
+
+                            }
+
+                        }
                     }
                 }
             }
@@ -88,6 +100,16 @@ namespace CrawlyRunner
             {
                 newUris.Add(link);
             }
+        }
+
+        private static bool IsRss(HtmlAttribute type, HtmlAttribute rel)
+        {
+            //application/rss+xml' or @type='application/atom+xml
+            bool isRss = rel.Value.Equals("alternate", StringComparison.InvariantCultureIgnoreCase)
+                && (type.Value.Equals("application/rss+xml", StringComparison.InvariantCultureIgnoreCase)
+                    || type.Value.Equals("application /atom+xml", StringComparison.InvariantCultureIgnoreCase));
+
+            return isRss;
         }
     }
 }

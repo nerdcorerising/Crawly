@@ -28,17 +28,17 @@ namespace Crawly.HTML
             foreach (HtmlNode link in doc.DocumentNode.Descendants("a"))
             {
                 var content = link.GetAttributeValue("href", "");
-                if (!String.IsNullOrEmpty(content) && !content.StartsWith("javascript", StringComparison.InvariantCultureIgnoreCase))
+                if (!String.IsNullOrEmpty(content) 
+                    && !content.StartsWith("javascript", StringComparison.InvariantCultureIgnoreCase)
+                    && !content.StartsWith("mailto", StringComparison.InvariantCultureIgnoreCase))
                 {
                     Uri temp = new Uri(baseUri, content);
-                    _log.Debug($"Created uri {temp} from baseUri {baseUri} and relativeUri {content}");
-
+                    
                     if (IsFromBannedDomain(temp, _bannedUrls) || ContainsBannedExtension(temp, _bannedExts))
                     {
                         continue;
                     }
                     
-                    _log.Debug($"Found link {content}");
                     found.Add(temp);
                 }
             }
@@ -59,7 +59,6 @@ namespace Crawly.HTML
                 {
                     if (segment.EndsWith(ext, StringComparison.InvariantCultureIgnoreCase))
                     {
-                        _log.Debug($"Skipping url {temp.OriginalString} because it ends with banned extension {ext}.");
                         return true;
                     }
                 }

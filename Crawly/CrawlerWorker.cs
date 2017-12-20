@@ -1,10 +1,14 @@
 ﻿using Crawly.HTML;
+using Crawly.Util;
 using HtmlAgilityPack;
 using log4net;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,7 +21,8 @@ namespace Crawly
         public WorkerFunction Function                              { get; set; }
         public ConcurrentDictionary<string, Robots> Robots          { get; set; }
         public IEnumerable<string> BannedExtensions                 { get; set; }
-        public ConcurrentBag<string> Visited                        { get; set; }
+        public StringHash Visited                                   { get; set; }
+        public ReaderWriterLockSlim VisitedLock                         { get; set; }
         public CrawlerQueue Sites                                   { get; set; }
         public bool RespectRobots                                   { get; set; }
         public string UserAgent                                     { get; set; }
@@ -32,15 +37,15 @@ namespace Crawly
         private Crawler _parent = null;
         private WorkerFunction _callback = null;
         private ConcurrentDictionary<String, Robots> _robots = null;
-        // TODO: use something like hashset if perf matters here
-        private IEnumerable<string> _bannedExts;
-        private ConcurrentBag<String> _visited = null;
+        private IEnumerable<string> _bannedExts = null;
+        private StringHash _visited = null;
+        private ReaderWriterLockSlim _visitedLock = null;
         private CrawlerQueue _sites = null;
         private bool _respectRobots = true;
         private string _userAgent = null;
         private int _maxDepth = -1;
         private int _id = -1;
-        private HtmlWeb _web;
+        private HttpClient _client;
 
         public void Run(CrawlerWorkerArgs args)
         {
@@ -54,14 +59,16 @@ namespace Crawly
             _robots = args.Robots;
             _bannedExts = args.BannedExtensions;
             _visited = args.Visited;
+            _visitedLock = args.VisitedLock;
             _sites = args.Sites;
             _respectRobots = args.RespectRobots;
             _userAgent = args.UserAgent;
             _maxDepth = args.MaxDepth;
             _id = args.ID;
+            _client = new HttpClient();
 
-            _web = new HtmlWeb();
-            _web.UserAgent = _userAgent;
+            //_web = new HtmlWeb();
+            //_web.UserAgent = _userAgent;
 
             while (true)
             {
@@ -71,11 +78,9 @@ namespace Crawly
                     Interlocked.Increment(ref _parent.PausedWorkers);
                     if(_sites.Empty() && _parent.PausedWorkers == _parent.TotalWorkers)
                     {
-                        Log("Queue is empty and all workers paused, terminating.");
                         return;
                     }
 
-                    Log("No work, sleeping");
                     Thread.Sleep(500);
                     Interlocked.Decrement(ref _parent.PausedWorkers);
 
@@ -83,20 +88,21 @@ namespace Crawly
                 }
 
                 String url = next.Url;
-                if (next.Depth < _maxDepth && !_visited.Contains(url))
+
+                
+                _visitedLock.EnterReadLock();
+                bool visited = _visited.Contains(url);
+                _visitedLock.ExitReadLock();
+                
+                if (next.Depth < _maxDepth && !visited)
                 {
                     VisitOneSite(next);
-                }
-                else
-                {
-                    Log($"Skipping {url}.");
                 }
             }
         }
 
         private void VisitOneSite(Site next)
         {
-            _log.Debug($"Visiting site {next.Url}.");
             Uri uri = new Uri(next.Url);
             string host = uri.Host;
 
@@ -113,18 +119,27 @@ namespace Crawly
 
                 if (!config.Allowed(uri))
                 {
-                    Log($"Skipping link {uri} because it was banned by robots.txt.");
                     return;
                 }
             }
 
+            _visitedLock.EnterWriteLock();
             _visited.Add(next.Url);
-
-            Log($"Visiting site {uri}.");
+            _visitedLock.ExitWriteLock();
 
             try
             {
-                HtmlDocument doc = _web.Load(uri);
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
+                request.Proxy = null;
+                request.KeepAlive = false;
+                request.Method = "GET";
+                StreamReader responseStream = new StreamReader(request.GetResponse().GetResponseStream());
+                HtmlDocument doc = new HtmlDocument();
+                doc.Load(responseStream);
+
+                responseStream.Close();
+                request.GetResponse().Close();
+                
                 List<string> found;
                 List<Uri> nextSites;
                 _callback(doc, uri, out found, out nextSites);
@@ -134,7 +149,7 @@ namespace Crawly
                     _parent.UrlFound(f);
                 }
 
-                foreach(Uri link in nextSites)
+                foreach (Uri link in nextSites)
                 {
                     Site temp = new Site()
                     {
@@ -147,13 +162,8 @@ namespace Crawly
             }
             catch (Exception e)
             {
-                Log($"Error visiting site {uri.AbsolutePath}, exception message {e.Message}.");
+                _log.Debug($"Worker {_id}: Error visiting site {uri.AbsolutePath}, exception message {e.Message}.");
             }
-        }
-
-        private void Log(string message)
-        {
-            _log.Debug($"Worker {_id}: {message}");
         }
     }
 }

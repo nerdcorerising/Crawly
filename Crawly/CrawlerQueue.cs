@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Crawly
@@ -20,7 +21,8 @@ namespace Crawly
 
         private readonly object AddRobotsLock = new object();
 
-        private ConcurrentDictionary<string, SiteInfo> _infos = new ConcurrentDictionary<string, SiteInfo>();
+        private Dictionary<string, SiteInfo> _infos = new Dictionary<string, SiteInfo>();
+        private ReaderWriterLockSlim _infosLock = new ReaderWriterLockSlim();
         private bool _respectRobots = true;
         private string _userAgent = null;
 
@@ -34,22 +36,26 @@ namespace Crawly
         {
             string domain = new Uri(s.Url).Host.ToLower();
             SiteInfo info;
+            _infosLock.EnterReadLock();
+
             if (!_infos.TryGetValue(domain, out info))
             {
+                _infosLock.ExitReadLock();
                 SiteInfo newInfo = CreateSiteInfo(domain);
 
-                lock (AddRobotsLock)
+                _infosLock.EnterWriteLock();
+                // Check to see if another thread had the lock and updated it
+                if (!_infos.TryGetValue(domain, out info))
                 {
-                    // Check to see if another thread had the lock and updated it
-                    if (!_infos.TryGetValue(domain, out info))
-                    {
-                        info = newInfo;
-                        if (!_infos.TryAdd(domain, info))
-                        {
-                            _log.Error($"Something added a SiteInfo while we had the lock, this shouldn't happen.");
-                        }
-                    }
+                    info = newInfo;
+                    _infos.Add(domain, info);
                 }
+                _infosLock.ExitWriteLock();
+            }
+
+            if (_infosLock.IsReadLockHeld)
+            {
+                _infosLock.ExitReadLock();
             }
 
             info.Pending.Enqueue(s);
@@ -90,26 +96,41 @@ namespace Crawly
 
         public bool GetNextAvailableWorker(out Site next)
         {
-            next = null;
-            foreach (String domain in _infos.Keys)
+            try
             {
-                SiteInfo info;
-                if (_infos.TryGetValue(domain, out info))
+                _infosLock.EnterReadLock();
+                next = null;
+                foreach (String domain in _infos.Keys)
                 {
-                    if (info.Robots == null || info.Robots.RemainingDelay() <= 0)
+                    SiteInfo info;
+                    if (_infos.TryGetValue(domain, out info))
                     {
-                        Site s;
-                        if (info.Pending.TryDequeue(out s))
+                        if (info.Robots == null || info.Robots.RemainingDelay() <= 0)
                         {
-                            info.Robots.Visited();
-                            next = s;
-                            return true;
+                            Site s;
+                            if (info.Pending.TryDequeue(out s))
+                            {
+                                if (info.Robots != null)
+                                {
+                                    info.Robots.Visited();
+                                }
+
+                                next = s;
+                                return true;
+                            }
                         }
                     }
                 }
-            }
 
-            return false;
+                return false;
+            }
+            finally
+            {
+                if (_infosLock.IsReadLockHeld)
+                {
+                    _infosLock.ExitReadLock();
+                }
+            }
         }
     }
 }

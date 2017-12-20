@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 
 namespace Crawly
 {
@@ -31,15 +32,15 @@ namespace Crawly
             try
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-                using (StreamReader reader = new StreamReader(request.GetResponse().GetResponseStream()))
+                StreamReader reader = new StreamReader(request.GetResponse().GetResponseStream());
+                while (reader.Peek() != -1)
                 {
-                    while (reader.Peek() != -1)
-                    {
-                        bool userAgentMatch = ParseUserAgentFields(reader, url);
+                    bool userAgentMatch = ParseUserAgentFields(reader, url);
 
-                        ParseRulesForUserAgent(reader, userAgentMatch, url);
-                    }
+                    ParseRulesForUserAgent(reader, userAgentMatch, url);
                 }
+                reader.Close();
+                request.GetResponse().Close();
             }
             catch (Exception e)
             {
@@ -188,7 +189,6 @@ namespace Crawly
         {
             long diff = (_lastAccessTime + _waitTime) - DateTime.Now.Ticks;
             long ret = Math.Max(diff, 0);
-            _log.Debug($"{_domain} Remaining time = {ret}");
 
             return ret;
         }
