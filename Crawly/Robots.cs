@@ -32,15 +32,15 @@ namespace Crawly
             try
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-                StreamReader reader = new StreamReader(request.GetResponse().GetResponseStream());
-                while (reader.Peek() != -1)
+                using (StreamReader reader = new StreamReader(request.GetResponse().GetResponseStream()))
                 {
-                    bool userAgentMatch = ParseUserAgentFields(reader, url);
+                    while (reader.Peek() != -1)
+                    {
+                        bool userAgentMatch = ParseUserAgentFields(reader, url);
 
-                    ParseRulesForUserAgent(reader, userAgentMatch, url);
+                        ParseRulesForUserAgent(reader, userAgentMatch, url);
+                    }
                 }
-                reader.Close();
-                request.GetResponse().Close();
             }
             catch (Exception e)
             {

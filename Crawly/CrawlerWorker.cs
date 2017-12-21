@@ -45,7 +45,7 @@ namespace Crawly
         private string _userAgent = null;
         private int _maxDepth = -1;
         private int _id = -1;
-        private HttpClient _client;
+        private HtmlWeb _web;
 
         public void Run(CrawlerWorkerArgs args)
         {
@@ -65,10 +65,9 @@ namespace Crawly
             _userAgent = args.UserAgent;
             _maxDepth = args.MaxDepth;
             _id = args.ID;
-            _client = new HttpClient();
 
-            //_web = new HtmlWeb();
-            //_web.UserAgent = _userAgent;
+            _web = new HtmlWeb();
+            _web.UserAgent = _userAgent;
 
             while (true)
             {
@@ -129,16 +128,7 @@ namespace Crawly
 
             try
             {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
-                request.Proxy = null;
-                request.KeepAlive = false;
-                request.Method = "GET";
-                StreamReader responseStream = new StreamReader(request.GetResponse().GetResponseStream());
-                HtmlDocument doc = new HtmlDocument();
-                doc.Load(responseStream);
-
-                responseStream.Close();
-                request.GetResponse().Close();
+                HtmlDocument doc = _web.Load(uri);
                 
                 List<string> found;
                 List<Uri> nextSites;
